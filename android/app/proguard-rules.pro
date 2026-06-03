@@ -1,0 +1,3 @@
+-keep class com.markitdownmodule.** { *; }
+-keep class com.chaquo.python.** { *; }
+-keepclassmembers class com.chaquo.python.** { *; }
