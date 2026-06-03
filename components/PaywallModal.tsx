@@ -6,12 +6,18 @@ import {
   StyleSheet,
   TouchableOpacity,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
+import type { PurchaseStatus } from '@/hooks/usePurchase';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onPurchase: () => void;
+  onRestore: () => void;
+  purchaseStatus: PurchaseStatus;
+  localizedPrice: string;
+  error: string | null;
 }
 
 const FEATURES = [
@@ -21,10 +27,12 @@ const FEATURES = [
   'No ads, ever',
 ];
 
-export function PaywallModal({ visible, onClose, onPurchase }: Props) {
+export function PaywallModal({ visible, onClose, onPurchase, onRestore, purchaseStatus, localizedPrice, error }: Props) {
+  const busy = purchaseStatus === 'purchasing' || purchaseStatus === 'restoring';
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable style={styles.backdrop} onPress={busy ? undefined : onClose}>
         <Pressable style={styles.sheet} onPress={e => e.stopPropagation()}>
           <View style={styles.handle} />
 
@@ -43,12 +51,31 @@ export function PaywallModal({ visible, onClose, onPurchase }: Props) {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.buyButton} onPress={onPurchase} activeOpacity={0.85}>
-            <Text style={styles.buyButtonText}>Buy Pro — $2.99</Text>
+          {error && <Text style={styles.errorText}>{error}</Text>}
+
+          <TouchableOpacity
+            style={[styles.buyButton, busy && styles.buyButtonDisabled]}
+            onPress={onPurchase}
+            disabled={busy}
+            activeOpacity={0.85}
+          >
+            {purchaseStatus === 'purchasing' ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buyButtonText}>Buy Pro — {localizedPrice}</Text>
+            )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-            <Text style={styles.cancelText}>Maybe tomorrow</Text>
+          <TouchableOpacity style={styles.restoreButton} onPress={onRestore} disabled={busy}>
+            {purchaseStatus === 'restoring' ? (
+              <ActivityIndicator color="#7c3aed" size="small" />
+            ) : (
+              <Text style={styles.restoreText}>Restore purchase</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.cancelButton} onPress={onClose} disabled={busy}>
+            <Text style={[styles.cancelText, busy && styles.cancelTextDisabled]}>Maybe tomorrow</Text>
           </TouchableOpacity>
         </Pressable>
       </Pressable>
@@ -98,7 +125,7 @@ const styles = StyleSheet.create({
   },
   featureList: {
     width: '100%',
-    marginBottom: 28,
+    marginBottom: 20,
   },
   featureRow: {
     flexDirection: 'row',
@@ -116,18 +143,38 @@ const styles = StyleSheet.create({
     color: '#e2e8f0',
     fontSize: 15,
   },
+  errorText: {
+    color: '#fc8181',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
   buyButton: {
     width: '100%',
     backgroundColor: '#7c3aed',
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
+    minHeight: 52,
+    justifyContent: 'center',
+  },
+  buyButtonDisabled: {
+    opacity: 0.6,
   },
   buyButtonText: {
     color: '#fff',
     fontSize: 17,
     fontWeight: '700',
+  },
+  restoreButton: {
+    paddingVertical: 10,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  restoreText: {
+    color: '#7c3aed',
+    fontSize: 14,
   },
   cancelButton: {
     paddingVertical: 8,
@@ -135,5 +182,8 @@ const styles = StyleSheet.create({
   cancelText: {
     color: '#718096',
     fontSize: 15,
+  },
+  cancelTextDisabled: {
+    color: '#4a5568',
   },
 });

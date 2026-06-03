@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { NativeModules, Platform } from 'react-native';
+import * as XLSX from 'xlsx';
 
 export interface ConversionResult {
   fileName: string;
@@ -46,6 +47,13 @@ async function runConversion(filePath: string, mimeType: string): Promise<string
 }
 
 async function convertWithJS(filePath: string, mimeType: string): Promise<string> {
+  if (
+    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mimeType === 'application/vnd.ms-excel'
+  ) {
+    return xlsxToMarkdown(filePath);
+  }
+
   const content = await FileSystem.readAsStringAsync(filePath, { encoding: FileSystem.EncodingType.UTF8 }).catch(() => '');
 
   if (mimeType === 'text/csv') {
@@ -60,7 +68,27 @@ async function convertWithJS(filePath: string, mimeType: string): Promise<string
   if (mimeType === 'text/html') {
     return htmlToMarkdown(content);
   }
-  return '> Conversion not supported on iOS for this file type.\n\nFile: ' + filePath;
+  return '> This format requires Android for full MarkItDown conversion.\n\n**File:** ' + filePath.split('/').pop();
+}
+
+async function xlsxToMarkdown(filePath: string): Promise<string> {
+  const base64 = await FileSystem.readAsStringAsync(filePath, { encoding: FileSystem.EncodingType.Base64 });
+  const workbook = XLSX.read(base64, { type: 'base64' });
+  const sections: string[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    if (!rows.length) continue;
+
+    sections.push(`## ${sheetName}\n`);
+    const header = '| ' + (rows[0] as string[]).map(String).join(' | ') + ' |';
+    const divider = '| ' + (rows[0] as string[]).map(() => '---').join(' | ') + ' |';
+    const body = rows.slice(1).map(r => '| ' + (r as string[]).map(String).join(' | ') + ' |').join('\n');
+    sections.push([header, divider, body].filter(Boolean).join('\n'));
+  }
+
+  return sections.join('\n\n');
 }
 
 function csvToMarkdown(csv: string): string {

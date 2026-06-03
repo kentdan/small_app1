@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useDailyLimit } from '@/hooks/useDailyLimit';
 import { useConverter } from '@/hooks/useConverter';
+import { usePurchase } from '@/hooks/usePurchase';
 import { DailyLimitBar } from '@/components/DailyLimitBar';
 import { PaywallModal } from '@/components/PaywallModal';
 
@@ -23,6 +24,13 @@ export default function HomeScreen() {
   const limit = useDailyLimit();
   const { state, pickAndConvert, reset } = useConverter();
   const [paywallVisible, setPaywallVisible] = useState(false);
+
+  const { status: purchaseStatus, purchase, restore, localizedPrice, error: purchaseError } = usePurchase(
+    async () => {
+      await limit.unlockPremium();
+      setPaywallVisible(false);
+    }
+  );
 
   const handlePick = () => {
     pickAndConvert(
@@ -125,11 +133,11 @@ export default function HomeScreen() {
       <PaywallModal
         visible={paywallVisible}
         onClose={() => setPaywallVisible(false)}
-        onPurchase={() => {
-          // TODO: integrate expo-in-app-purchases
-          limit.unlockPremium();
-          setPaywallVisible(false);
-        }}
+        onPurchase={purchase}
+        onRestore={restore}
+        purchaseStatus={purchaseStatus}
+        localizedPrice={localizedPrice}
+        error={purchaseError}
       />
     </SafeAreaView>
   );
