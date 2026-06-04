@@ -12,17 +12,20 @@ import { useRouter } from 'expo-router';
 import { useDailyLimit } from '@/hooks/useDailyLimit';
 import { useConverter } from '@/hooks/useConverter';
 import { usePurchase } from '@/hooks/usePurchase';
+import { useHistory } from '@/hooks/useHistory';
+import { countTokens } from '@/components/TokenCounter';
 import { DailyLimitBar } from '@/components/DailyLimitBar';
 import { PaywallModal } from '@/components/PaywallModal';
 
 const SUPPORTED_FORMATS = Platform.OS === 'android'
   ? ['PDF', 'DOCX', 'PPTX', 'XLSX', 'Images', 'HTML', 'CSV', 'JSON', 'XML', 'EPUB']
-  : ['HTML', 'CSV', 'JSON', 'XML', 'DOCX*'];
+  : ['XLSX', 'HTML', 'CSV', 'JSON', 'XML'];
 
 export default function HomeScreen() {
   const router = useRouter();
   const limit = useDailyLimit();
   const { state, pickAndConvert, reset } = useConverter();
+  const { save: saveHistory } = useHistory();
   const [paywallVisible, setPaywallVisible] = useState(false);
 
   const { status: purchaseStatus, purchase, restore, localizedPrice, error: purchaseError } = usePurchase(
@@ -42,12 +45,18 @@ export default function HomeScreen() {
 
   React.useEffect(() => {
     if (state.status === 'done') {
+      const { fileName, fileType, markdown } = state.result;
+      // Save to history in background
+      saveHistory({
+        fileName,
+        fileType,
+        markdown,
+        tokenCount: countTokens(markdown),
+        convertedAt: Date.now(),
+      });
       router.push({
         pathname: '/preview',
-        params: {
-          fileName: state.result.fileName,
-          markdown: state.result.markdown,
-        },
+        params: { fileName, markdown },
       });
       reset();
     }
@@ -58,11 +67,6 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.appTitle}>MDConverter</Text>
-          <Text style={styles.appSubtitle}>Convert any file to Markdown</Text>
-        </View>
 
         {/* Daily limit bar */}
         {limit.loaded && (
@@ -86,21 +90,26 @@ export default function HomeScreen() {
               <>
                 <ActivityIndicator color="#fff" size="large" style={styles.spinner} />
                 <Text style={styles.convertButtonText}>
-                  {state.status === 'picking' ? 'Picking file…' : `Converting ${state.status === 'converting' ? state.fileName : ''}…`}
+                  {state.status === 'picking' ? 'Picking file…' : `Converting…`}
                 </Text>
+                {state.status === 'converting' && (
+                  <Text style={styles.convertButtonFileName} numberOfLines={1}>
+                    {state.fileName}
+                  </Text>
+                )}
               </>
             ) : (
               <>
-                <Text style={styles.convertIcon}>📄</Text>
-                <Text style={styles.convertButtonText}>Pick a File</Text>
-                <Text style={styles.convertButtonSub}>Tap to select a file to convert</Text>
+                <Text style={styles.convertIcon}>📄  →  #️⃣</Text>
+                <Text style={styles.convertButtonText}>Convert to Markdown</Text>
+                <Text style={styles.convertButtonSub}>Tap to pick any file</Text>
               </>
             )}
           </TouchableOpacity>
 
           {state.status === 'error' && (
             <View style={styles.errorBox}>
-              <Text style={styles.errorText}>Error: {state.message}</Text>
+              <Text style={styles.errorText}>{state.message}</Text>
               <TouchableOpacity onPress={reset}>
                 <Text style={styles.retryText}>Try again</Text>
               </TouchableOpacity>
@@ -110,7 +119,9 @@ export default function HomeScreen() {
 
         {/* Supported formats */}
         <View style={styles.formatsSection}>
-          <Text style={styles.formatsTitle}>Supported formats</Text>
+          <Text style={styles.formatsTitle}>
+            {Platform.OS === 'android' ? 'Supported formats (via MarkItDown)' : 'Supported on iOS'}
+          </Text>
           <View style={styles.formatsBadges}>
             {SUPPORTED_FORMATS.map(fmt => (
               <View key={fmt} style={styles.badge}>
@@ -119,15 +130,19 @@ export default function HomeScreen() {
             ))}
           </View>
           {Platform.OS === 'ios' && (
-            <Text style={styles.iosNote}>* DOCX support limited on iOS. Android has full MarkItDown support.</Text>
+            <Text style={styles.iosNote}>Full format support (PDF, DOCX, PPTX…) available on Android via MarkItDown.</Text>
           )}
         </View>
 
         {/* On-device badge */}
         <View style={styles.privacyBadge}>
           <Text style={styles.privacyIcon}>🔒</Text>
-          <Text style={styles.privacyText}>All conversion happens on your device — no uploads, no internet required.</Text>
+          <Text style={styles.privacyText}>
+            All processing happens on your device — no uploads, no internet needed.
+            {'\n'}Perfect for sensitive documents.
+          </Text>
         </View>
+
       </View>
 
       <PaywallModal
@@ -150,23 +165,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingTop: 24,
-  },
-  header: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  appTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#f7fafc',
-    letterSpacing: -0.5,
-  },
-  appSubtitle: {
-    fontSize: 15,
-    color: '#718096',
-    marginTop: 4,
+    paddingTop: 12,
   },
   hero: {
     flex: 1,
@@ -177,21 +176,21 @@ const styles = StyleSheet.create({
   convertButton: {
     width: '100%',
     backgroundColor: '#7c3aed',
-    borderRadius: 20,
-    paddingVertical: 32,
+    borderRadius: 24,
+    paddingVertical: 36,
     alignItems: 'center',
     shadowColor: '#7c3aed',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    elevation: 12,
   },
   convertButtonDisabled: {
     opacity: 0.7,
   },
   convertIcon: {
-    fontSize: 48,
-    marginBottom: 12,
+    fontSize: 32,
+    marginBottom: 14,
   },
   spinner: {
     marginBottom: 12,
@@ -202,9 +201,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   convertButtonSub: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 14,
     marginTop: 6,
+  },
+  convertButtonFileName: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    marginTop: 6,
+    maxWidth: 260,
   },
   errorBox: {
     marginTop: 16,
@@ -227,11 +232,11 @@ const styles = StyleSheet.create({
   },
   formatsSection: {
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 14,
   },
   formatsTitle: {
-    color: '#718096',
-    fontSize: 12,
+    color: '#4a5568',
+    fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -251,7 +256,7 @@ const styles = StyleSheet.create({
     borderColor: '#2d3748',
   },
   badgeText: {
-    color: '#a0aec0',
+    color: '#718096',
     fontSize: 13,
     fontWeight: '500',
   },
@@ -263,21 +268,22 @@ const styles = StyleSheet.create({
   },
   privacyBadge: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginHorizontal: 20,
     marginBottom: 24,
     backgroundColor: '#16213e',
     borderRadius: 12,
-    padding: 12,
+    padding: 14,
     gap: 10,
   },
   privacyIcon: {
     fontSize: 18,
+    marginTop: 1,
   },
   privacyText: {
     flex: 1,
     color: '#4a5568',
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 19,
   },
 });
