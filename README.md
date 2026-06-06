@@ -1,33 +1,54 @@
 # MDConverter
 
-A React Native app that converts files to Markdown **entirely on-device** using Microsoft's [MarkItDown](https://github.com/microsoft/markitdown) Python library.
+Convert any file to Markdown, entirely on-device. Works on **iOS and Android** — no server, no internet, no Python runtime required.
 
-## Features
+## How to use
 
-- **On-device processing** — no uploads, no internet required
-- **Wide format support** (Android): PDF, DOCX, PPTX, XLSX, images, HTML, CSV, JSON, XML, EPUB
-- **Freemium model** — 5 free conversions/day, upgrade to Pro for unlimited
-- **Markdown preview** — rendered or raw view, copy to clipboard, share as `.md`
+**Option 1 — Share sheet (recommended on iPhone)**
+1. Open any file in Files, Mail, Safari, or any other app
+2. Tap the Share button (or long-press)
+3. Choose **MDConverter** from the share sheet
+4. The file is converted instantly and shown in the preview
 
-## How it works
+**Option 2 — Pick a file from within the app**
+1. Open MDConverter
+2. Tap **Convert to Markdown**
+3. Select a file from your device or iCloud
+
+## Supported formats (iOS and Android)
+
+| Format | Converter |
+|--------|-----------|
+| PDF | pdfjs-dist — text extraction per page |
+| DOCX | jszip + XML parser — preserves headings, bold, italic, lists |
+| PPTX | jszip + XML parser — extracts text per slide |
+| XLSX | SheetJS — each sheet becomes a markdown table |
+| HTML | turndown.js — full semantic conversion |
+| CSV | Custom parser — proper quoted-field handling |
+| JSON | Pretty-prints as fenced code block |
+| XML | Fenced code block |
+| TXT | Plain text passthrough |
+| EPUB | jszip + HTML extraction from XHTML chapters |
+
+## Architecture
+
+All conversion is pure JavaScript/TypeScript — no native modules, no Python.
 
 ```
-User picks file
-      │
-      ▼
-expo-document-picker  →  copies to app cache
-      │
-      ▼  (Android)
-MarkItDownModule (NativeModule)
-      │
-      ▼
-Chaquopy (Python runtime embedded in APK)
-      │
-      ▼
-MarkItDown library  →  returns Markdown string
-      │
-      ▼
-Preview screen (react-native-markdown-display)
+Share button / File picker
+        │
+        ▼
+converters/index.ts  (dispatcher, picks converter by MIME type)
+        │
+        ├── converters/pdf.ts    (pdfjs-dist, text extraction)
+        ├── converters/docx.ts   (jszip + XML)
+        ├── converters/pptx.ts   (jszip + XML per slide)
+        ├── converters/xlsx.ts   (SheetJS)
+        ├── converters/html.ts   (turndown.js)
+        └── converters/text.ts   (CSV, JSON, XML, plain text)
+        │
+        ▼
+Preview screen — rendered markdown, token counter, Copy for AI, Share .md
 ```
 
 ## Tech stack
@@ -35,57 +56,29 @@ Preview screen (react-native-markdown-display)
 | Layer | Tech |
 |-------|------|
 | UI | Expo 52 + Expo Router + TypeScript |
+| Share/Open with | iOS CFBundleDocumentTypes + Android intent-filter |
 | File picker | expo-document-picker |
-| File system | expo-file-system |
-| Sharing | expo-sharing + expo-clipboard |
-| Markdown render | react-native-markdown-display |
+| PDF | pdfjs-dist (legacy build, worker disabled) |
+| DOCX / PPTX / EPUB | jszip + custom XML parser |
+| XLSX | SheetJS (xlsx) |
+| HTML | turndown.js |
+| Sharing output | expo-sharing + expo-clipboard |
 | Usage tracking | @react-native-async-storage/async-storage |
-| Python runtime | Chaquopy 16 (Android only) |
-| Converter | MarkItDown (Python, via Chaquopy) |
+| In-app purchase | react-native-iap |
 
 ## Setup
 
-### 1. Install dependencies
 ```bash
 npm install
-```
-
-### 2. Run on Android
-```bash
+npx expo run:ios     # requires Xcode on Mac + Apple dev account
 npx expo run:android
-```
-> Chaquopy will download Python 3.11 and install `markitdown[all]` during the first Gradle build (~2-5 min).
-
-### 3. iOS (limited support)
-```bash
-npx expo run:ios
-```
-iOS uses JavaScript-based fallbacks for HTML, CSV, JSON, XML. PDF/DOCX/PPTX/XLSX are not supported on iOS without additional native work.
-
-## Project structure
-
-```
-app/
-  _layout.tsx          # Navigation shell
-  index.tsx            # Home screen (file picker)
-  preview.tsx          # Markdown preview + share
-components/
-  DailyLimitBar.tsx    # Freemium progress bar
-  MarkdownViewer.tsx   # Rendered / raw toggle
-  PaywallModal.tsx     # Upgrade sheet
-hooks/
-  useDailyLimit.ts     # 5/day limit + AsyncStorage
-  useConverter.ts      # Conversion state machine
-modules/MarkItDownModule/
-  index.ts                               # TS interface
-  android/build.gradle                   # Chaquopy config
-  android/src/main/python/converter.py   # Python wrapper
-  android/src/main/java/.../             # NativeModule bridge
 ```
 
 ## Freemium
 
-- Free tier: **5 conversions per day** (resets at midnight)
-- Pro tier: **unlimited** conversions
-- Purchase state stored in AsyncStorage
-- Wire up `expo-in-app-purchases` in the `onPurchase` handler in `app/index.tsx` for real billing
+- Free: 5 conversions/day (resets at midnight)
+- Pro: unlimited — $2.99 one-time
+
+Before submitting, create product ID `com.mdconverter.pro` (Non-Consumable) in:
+- App Store Connect → your app → In-App Purchases
+- Google Play Console → your app → In-app products

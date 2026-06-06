@@ -1,8 +1,6 @@
 import { useState, useCallback } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
-import { NativeModules, Platform } from 'react-native';
-import * as XLSX from 'xlsx';
+import { convertToMarkdown, SUPPORTED_MIME_TYPES } from '@/converters';
 
 export interface ConversionResult {
   fileName: string;
@@ -18,116 +16,23 @@ type ConversionState =
   | { status: 'done'; result: ConversionResult }
   | { status: 'error'; message: string };
 
-const SUPPORTED_TYPES = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/msword',
-  'text/html',
-  'text/csv',
-  'application/json',
-  'text/xml',
-  'application/xml',
-  'image/jpeg',
-  'image/png',
-  'application/epub+zip',
-];
-
-async function runConversion(filePath: string, mimeType: string): Promise<string> {
-  if (Platform.OS === 'android') {
-    const { MarkItDownModule } = NativeModules;
-    if (!MarkItDownModule) {
-      throw new Error('MarkItDown native module not available. Run `expo run:android` with full build.');
-    }
-    return await MarkItDownModule.convert(filePath);
-  }
-  // iOS JS fallback — handled per-format
-  return await convertWithJS(filePath, mimeType);
-}
-
-async function convertWithJS(filePath: string, mimeType: string): Promise<string> {
-  if (
-    mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-    mimeType === 'application/vnd.ms-excel'
-  ) {
-    return xlsxToMarkdown(filePath);
-  }
-
-  const content = await FileSystem.readAsStringAsync(filePath, { encoding: FileSystem.EncodingType.UTF8 }).catch(() => '');
-
-  if (mimeType === 'text/csv') {
-    return csvToMarkdown(content);
-  }
-  if (mimeType === 'application/json') {
-    return '```json\n' + content + '\n```';
-  }
-  if (mimeType === 'text/xml' || mimeType === 'application/xml') {
-    return '```xml\n' + content + '\n```';
-  }
-  if (mimeType === 'text/html') {
-    return htmlToMarkdown(content);
-  }
-  return '> This format requires Android for full MarkItDown conversion.\n\n**File:** ' + filePath.split('/').pop();
-}
-
-async function xlsxToMarkdown(filePath: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(filePath, { encoding: FileSystem.EncodingType.Base64 });
-  const workbook = XLSX.read(base64, { type: 'base64' });
-  const sections: string[] = [];
-
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-    if (!rows.length) continue;
-
-    sections.push(`## ${sheetName}\n`);
-    const header = '| ' + (rows[0] as string[]).map(String).join(' | ') + ' |';
-    const divider = '| ' + (rows[0] as string[]).map(() => '---').join(' | ') + ' |';
-    const body = rows.slice(1).map(r => '| ' + (r as string[]).map(String).join(' | ') + ' |').join('\n');
-    sections.push([header, divider, body].filter(Boolean).join('\n'));
-  }
-
-  return sections.join('\n\n');
-}
-
-function csvToMarkdown(csv: string): string {
-  const lines = csv.trim().split('\n').filter(Boolean);
-  if (!lines.length) return '';
-  const rows = lines.map(l => l.split(',').map(c => c.trim().replace(/^"|"$/g, '')));
-  const header = '| ' + rows[0].join(' | ') + ' |';
-  const divider = '| ' + rows[0].map(() => '---').join(' | ') + ' |';
-  const body = rows.slice(1).map(r => '| ' + r.join(' | ') + ' |').join('\n');
-  return [header, divider, body].filter(Boolean).join('\n');
-}
-
-function htmlToMarkdown(html: string): string {
-  return html
-    .replace(/<h([1-6])[^>]*>(.*?)<\/h\1>/gi, (_, n, t) => '#'.repeat(Number(n)) + ' ' + t.replace(/<[^>]+>/g, '') + '\n')
-    .replace(/<p[^>]*>(.*?)<\/p>/gi, (_, t) => t.replace(/<[^>]+>/g, '') + '\n\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
-    .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
-    .replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
 export function useConverter() {
   const [state, setState] = useState<ConversionState>({ status: 'idle' });
 
-  const pickAndConvert = useCallback(async (onLimitReached: () => void, recordConversion: () => Promise<void>, canConvert: boolean) => {
-    if (!canConvert) {
-      onLimitReached();
-      return;
-    }
+  // Called when user taps the pick button
+  const pickAndConvert = useCallback(async (
+    onLimitReached: () => void,
+    recordConversion: () => Promise<void>,
+    canConvert: boolean,
+  ) => {
+    if (!canConvert) { onLimitReached(); return; }
 
     setState({ status: 'picking' });
+
     let pickerResult: DocumentPicker.DocumentPickerResult;
     try {
       pickerResult = await DocumentPicker.getDocumentAsync({
-        type: SUPPORTED_TYPES,
+        type: SUPPORTED_MIME_TYPES,
         copyToCacheDirectory: true,
       });
     } catch {
@@ -141,27 +46,42 @@ export function useConverter() {
     }
 
     const asset = pickerResult.assets[0];
-    setState({ status: 'converting', fileName: asset.name });
+    await runConvert(asset.uri, asset.name, asset.mimeType ?? '', recordConversion);
+  }, []);
 
+  // Called when a file is opened via "Open with" / share sheet
+  const convertFromUri = useCallback(async (
+    uri: string,
+    fileName: string,
+    mimeType: string,
+    recordConversion: () => Promise<void>,
+    canConvert: boolean,
+    onLimitReached: () => void,
+  ) => {
+    if (!canConvert) { onLimitReached(); return; }
+    await runConvert(uri, fileName, mimeType, recordConversion);
+  }, []);
+
+  async function runConvert(
+    uri: string,
+    fileName: string,
+    mimeType: string,
+    recordConversion: () => Promise<void>,
+  ) {
+    setState({ status: 'converting', fileName });
     try {
-      const markdown = await runConversion(asset.uri, asset.mimeType ?? '');
+      const markdown = await convertToMarkdown(uri, mimeType);
       await recordConversion();
       setState({
         status: 'done',
-        result: {
-          fileName: asset.name,
-          fileType: asset.mimeType ?? 'unknown',
-          markdown,
-          convertedAt: Date.now(),
-        },
+        result: { fileName, fileType: mimeType, markdown, convertedAt: Date.now() },
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Conversion failed';
-      setState({ status: 'error', message });
+      setState({ status: 'error', message: err instanceof Error ? err.message : 'Conversion failed' });
     }
-  }, []);
+  }
 
   const reset = useCallback(() => setState({ status: 'idle' }), []);
 
-  return { state, pickAndConvert, reset };
+  return { state, pickAndConvert, convertFromUri, reset };
 }
