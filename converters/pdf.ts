@@ -1,49 +1,71 @@
+import './polyfills'; // must run before pdfjs is required
 import * as FileSystem from 'expo-file-system';
-// pdfjs-dist legacy build works in React Native (no canvas needed for text extraction)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfjs = require('pdfjs-dist/legacy/build/pdf');
 
-// Disable web worker — React Native has no Worker API
-pdfjs.GlobalWorkerOptions.workerSrc = '';
+// pdfjs-dist legacy build — no web worker, text extraction only (no canvas).
+// Lazily required so the polyfills above are installed first.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pdfjs: any;
+function getPdfjs() {
+  if (!pdfjs) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    pdfjs = require('pdfjs-dist/legacy/build/pdf');
+    pdfjs.GlobalWorkerOptions.workerSrc = ''; // run on main thread (no Worker in RN)
+  }
+  return pdfjs;
+}
 
 export async function pdfToMarkdown(filePath: string): Promise<string> {
   const base64 = await FileSystem.readAsStringAsync(filePath, {
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  // Decode base64 → Uint8Array
+  // base64 → Uint8Array (atob is available on RN 0.74+)
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  let doc;
+  try {
+    const lib = getPdfjs();
+    doc = await lib.getDocument({
+      data: bytes,
+      isEvalSupported: false, // Hermes has no eval
+      useSystemFonts: false,
+      disableFontFace: true,
+    }).promise;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not read this PDF on-device (${msg}). It may be scanned/image-only or encrypted.`
+    );
   }
 
-  const doc = await pdfjs.getDocument({ data: bytes }).promise;
   const sections: string[] = [];
 
   for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
     const page = await doc.getPage(pageNum);
     const content = await page.getTextContent();
 
-    // Group items into lines by approximate Y position
     interface TextItem { str: string; transform: number[] }
     const items = content.items as TextItem[];
-    const lineMap: Map<number, string[]> = new Map();
+    const lineMap = new Map<number, string[]>();
 
     for (const item of items) {
       if (!item.str.trim()) continue;
-      const y = Math.round(item.transform[5]);
+      const y = Math.round(item.transform[5]); // vertical position
       if (!lineMap.has(y)) lineMap.set(y, []);
       lineMap.get(y)!.push(item.str);
     }
 
-    // Sort lines top-to-bottom (higher Y = higher on page in PDF coords)
+    // PDF y grows upward → sort descending for top-to-bottom reading order
     const sorted = [...lineMap.entries()].sort((a, b) => b[0] - a[0]);
     const pageText = sorted.map(([, parts]) => parts.join(' ')).join('\n');
 
-    if (pageText.trim()) {
-      sections.push(`## Page ${pageNum}\n\n${pageText}`);
-    }
+    if (pageText.trim()) sections.push(`## Page ${pageNum}\n\n${pageText}`);
+  }
+
+  if (!sections.length) {
+    return '> No selectable text found. This PDF may be a scanned image (OCR is not supported on-device).';
   }
 
   return sections.join('\n\n---\n\n');

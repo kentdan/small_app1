@@ -5,6 +5,7 @@ import { xlsxToMarkdown } from './xlsx';
 import { htmlToMarkdown } from './html';
 import { csvToMarkdown, jsonToMarkdown, xmlToMarkdown, plainToMarkdown } from './text';
 import * as FileSystem from 'expo-file-system';
+import JSZip from 'jszip';
 
 export const SUPPORTED_MIME_TYPES = [
   'application/pdf',
@@ -85,7 +86,6 @@ export async function convertToMarkdown(filePath: string, mimeType: string): Pro
 }
 
 async function epubToMarkdown(filePath: string): Promise<string> {
-  const JSZip = (await import('jszip')).default;
   const base64 = await FileSystem.readAsStringAsync(filePath, {
     encoding: FileSystem.EncodingType.Base64,
   });
