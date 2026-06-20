@@ -29,16 +29,18 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: '#111' },
+          headerStyle: { backgroundColor: '#000' },
           headerTintColor: '#fff',
-          headerTitleStyle: { fontWeight: '700' },
-          contentStyle: { backgroundColor: '#111' },
+          headerTitleStyle: { fontWeight: '600', fontSize: 17 },
+          contentStyle: { backgroundColor: '#000' },
           animation: 'slide_from_right',
+          headerShadowVisible: false,
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'MDConverter' }} />
-        <Stack.Screen name="converting" options={{ title: 'Converting…', headerBackVisible: false }} />
-        <Stack.Screen name="preview" options={{ title: 'Result', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="converting" options={{ headerShown: false }} />
+        <Stack.Screen name="preview" options={{ title: '', headerBackTitle: 'Back' }} />
+        <Stack.Screen name="seed" options={{ headerShown: false }} />
       </Stack>
     </>
   );

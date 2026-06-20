@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Share, Alert, Platform,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  SafeAreaView, Share, Alert, Platform,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -13,12 +14,21 @@ export default function PreviewScreen() {
   const [raw, setRaw] = useState(false);
 
   React.useLayoutEffect(() => {
-    navigation.setOptions({ title: fileName ?? 'Result' });
-  }, [fileName]);
+    navigation.setOptions({
+      title: fileName ?? 'Result',
+      headerRight: () => (
+        <TouchableOpacity onPress={() => setRaw(r => !r)} style={{ paddingRight: 4 }}>
+          <Text style={{ color: raw ? '#5E5CE6' : 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '500' }}>
+            Raw
+          </Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [fileName, raw]);
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(markdown ?? '');
-    Alert.alert('Copied!', 'Paste into Claude, ChatGPT, or any AI tool.');
+    Alert.alert('Copied', 'Paste into Claude, ChatGPT, or any AI tool.');
   };
 
   const handleShare = async () => {
@@ -48,67 +58,57 @@ export default function PreviewScreen() {
   };
 
   return (
-    <View style={s.container}>
-      {/* Toggle */}
-      <View style={s.toggle}>
-        <TouchableOpacity style={[s.tab, !raw && s.tabActive]} onPress={() => setRaw(false)}>
-          <Text style={[s.tabText, !raw && s.tabTextActive]}>Preview</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.tab, raw && s.tabActive]} onPress={() => setRaw(true)}>
-          <Text style={[s.tabText, raw && s.tabTextActive]}>Raw</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Content */}
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-        <Text style={raw ? s.rawText : s.mdText} selectable>{markdown ?? ''}</Text>
+    <SafeAreaView style={s.safe}>
+      <ScrollView style={s.scroll} contentContainerStyle={s.content}>
+        <Text
+          style={raw ? s.rawText : s.mdText}
+          selectable
+        >
+          {markdown ?? ''}
+        </Text>
       </ScrollView>
 
-      {/* Actions */}
-      <View style={s.actions}>
-        <TouchableOpacity style={[s.actionBtn, s.actionPrimary]} onPress={handleCopy} activeOpacity={0.8}>
-          <Text style={s.actionPrimaryText}>📋  Copy for AI</Text>
+      <View style={s.bar}>
+        <TouchableOpacity style={[s.barBtn, s.primary]} onPress={handleCopy} activeOpacity={0.75}>
+          <Text style={s.primaryText}>Copy for AI</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={s.actionBtn} onPress={handleShare} activeOpacity={0.8}>
-          <Text style={s.actionText}>Share .md</Text>
+        <TouchableOpacity style={s.barBtn} onPress={handleShare} activeOpacity={0.75}>
+          <Text style={s.secondaryText}>Share .md</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111' },
-  toggle: {
-    flexDirection: 'row',
-    margin: 12,
-    backgroundColor: '#1e1e1e',
-    borderRadius: 10,
-    padding: 3,
-  },
-  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  tabActive: { backgroundColor: '#7c3aed' },
-  tabText: { color: '#555', fontSize: 14, fontWeight: '600' },
-  tabTextActive: { color: '#fff' },
+  safe: { flex: 1, backgroundColor: '#000' },
+
   scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
-  mdText: { color: '#e2e8f0', fontSize: 15, lineHeight: 26 },
-  rawText: { color: '#a0aec0', fontSize: 13, lineHeight: 20, fontFamily: 'monospace' },
-  actions: {
+  content: { padding: 20, paddingBottom: 32 },
+  mdText: { color: '#F2F2F7', fontSize: 16, lineHeight: 28 },
+  rawText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+
+  bar: {
     flexDirection: 'row',
     padding: 16,
+    paddingBottom: 24,
     gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#1e1e1e',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.08)',
   },
-  actionBtn: {
+  barBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#1e1e1e',
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
+    backgroundColor: '#1C1C1E',
   },
-  actionPrimary: { backgroundColor: '#7c3aed', flex: 1.4 },
-  actionText: { color: '#888', fontSize: 15, fontWeight: '600' },
-  actionPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  primary: { flex: 1.4, backgroundColor: '#5E5CE6' },
+  primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  secondaryText: { color: 'rgba(255,255,255,0.6)', fontSize: 16, fontWeight: '500' },
 });

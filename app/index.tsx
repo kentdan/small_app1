@@ -15,18 +15,19 @@ export default function HomeScreen() {
   const { errorMsg } = useLocalSearchParams<{ errorMsg?: string }>();
   const limit = useDailyLimit();
   const [converting, setConverting] = useState(false);
-  const [fileName, setFileName] = useState('');
+  const [convertingName, setConvertingName] = useState('');
 
   useEffect(() => {
-    if (errorMsg) Alert.alert('Conversion error', decodeURIComponent(errorMsg));
+    if (errorMsg) Alert.alert('Error', decodeURIComponent(errorMsg));
   }, [errorMsg]);
 
   const handlePick = async () => {
-    if (!limit.loaded) return;
+    if (!limit.loaded || converting) return;
     if (!limit.canConvert) {
       Alert.alert(
         'Daily limit reached',
-        `You've used all ${limit.dailyLimit} free conversions today. Come back tomorrow!`,
+        `You've used all ${limit.dailyLimit} free conversions today. Try again tomorrow.`,
+        [{ text: 'OK' }],
       );
       return;
     }
@@ -35,101 +36,132 @@ export default function HomeScreen() {
       type: SUPPORTED_MIME_TYPES,
       copyToCacheDirectory: true,
     });
-
     if (result.canceled || !result.assets?.length) return;
 
     const asset = result.assets[0];
-    setFileName(asset.name);
+    setConvertingName(asset.name);
     setConverting(true);
-
     try {
       const markdown = await convertToMarkdown(asset.uri, asset.mimeType ?? '');
       await limit.recordConversion();
       router.push({ pathname: '/preview', params: { fileName: asset.name, markdown } });
     } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Conversion failed');
+      Alert.alert('Conversion failed', e instanceof Error ? e.message : 'Please try another file.');
     } finally {
       setConverting(false);
-      setFileName('');
+      setConvertingName('');
     }
   };
+
+  const atLimit = limit.loaded && !limit.isPremium && !limit.canConvert;
 
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.container}>
 
-        {/* Limit counter */}
-        {limit.loaded && !limit.isPremium && (
-          <Text style={s.counter}>
-            {limit.usedToday}/{limit.dailyLimit} free conversions today
-          </Text>
-        )}
-
-        {/* Main button */}
-        <View style={s.hero}>
-          <TouchableOpacity style={s.btn} onPress={handlePick} disabled={converting} activeOpacity={0.8}>
-            {converting ? (
-              <>
-                <ActivityIndicator color="#fff" size="large" />
-                <Text style={s.btnLabel} numberOfLines={1}>{fileName || 'Converting…'}</Text>
-              </>
-            ) : (
-              <>
-                <Text style={s.btnIcon}>📄 → #️⃣</Text>
-                <Text style={s.btnLabel}>Convert to Markdown</Text>
-                <Text style={s.btnSub}>PDF · DOCX · XLSX · and more</Text>
-              </>
-            )}
-          </TouchableOpacity>
+        {/* Logo */}
+        <View style={s.logoArea}>
+          <View style={s.iconWrap}>
+            <Text style={s.iconLabel}>M↓</Text>
+          </View>
+          <Text style={s.appName}>MDConverter</Text>
+          <Text style={s.tagline}>Convert any file to Markdown — on device</Text>
         </View>
 
-        {/* Supported formats */}
-        <View style={s.formats}>
+        {/* Primary action */}
+        <TouchableOpacity
+          style={[s.btn, (converting || atLimit) && s.btnDim]}
+          onPress={handlePick}
+          activeOpacity={0.75}
+          disabled={converting}
+        >
+          {converting ? (
+            <View style={s.row}>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={s.btnSubLabel} numberOfLines={1}>
+                {convertingName || 'Converting…'}
+              </Text>
+            </View>
+          ) : (
+            <Text style={s.btnLabel}>
+              {atLimit ? `Limit reached · resets tomorrow` : 'Choose File'}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Format chips */}
+        <View style={s.chips}>
           {FORMATS.map(f => (
-            <View key={f} style={s.badge}>
-              <Text style={s.badgeText}>{f}</Text>
+            <View key={f} style={s.chip}>
+              <Text style={s.chipText}>{f}</Text>
             </View>
           ))}
         </View>
 
-        {/* Privacy note */}
-        <Text style={s.privacy}>🔒 Converted on-device · no uploads · no internet</Text>
+        {/* Footer */}
+        <View style={s.footer}>
+          {limit.loaded && !limit.isPremium && (
+            <Text style={s.counter}>{limit.usedToday} of {limit.dailyLimit} free today</Text>
+          )}
+          <Text style={s.privacy}>On-device · nothing leaves your phone</Text>
+        </View>
 
       </View>
     </SafeAreaView>
   );
 }
 
+const PURPLE = '#5E5CE6';
+
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#111' },
-  container: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
-  counter: { textAlign: 'center', color: '#666', fontSize: 13, marginBottom: 8 },
-  hero: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  btn: {
-    width: '100%',
-    backgroundColor: '#7c3aed',
+  safe: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, paddingHorizontal: 24 },
+
+  logoArea: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
+  iconWrap: {
+    width: 76,
+    height: 76,
     borderRadius: 20,
-    paddingVertical: 40,
+    backgroundColor: PURPLE,
     alignItems: 'center',
-    gap: 10,
-    shadowColor: '#7c3aed',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
+    justifyContent: 'center',
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
     elevation: 10,
   },
-  btnIcon: { fontSize: 36 },
-  btnLabel: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  btnSub: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
-  formats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  badge: {
-    backgroundColor: '#1e1e1e',
+  iconLabel: { color: '#fff', fontSize: 28, fontWeight: '800', letterSpacing: -1 },
+  appName: { color: '#fff', fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
+  tagline: { color: 'rgba(255,255,255,0.35)', fontSize: 15, textAlign: 'center' },
+
+  btn: {
+    backgroundColor: PURPLE,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    marginBottom: 18,
+    shadowColor: PURPLE,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  btnDim: { backgroundColor: '#2D2B6B', shadowOpacity: 0 },
+  btnLabel: { color: '#fff', fontSize: 18, fontWeight: '600', letterSpacing: -0.2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  btnSubLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 16, maxWidth: 220 },
+
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 28 },
+  chip: {
+    backgroundColor: '#1C1C1E',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: '#333',
   },
-  badgeText: { color: '#666', fontSize: 12 },
-  privacy: { textAlign: 'center', color: '#444', fontSize: 12, marginBottom: 24 },
+  chipText: { color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: '500' },
+
+  footer: { alignItems: 'center', gap: 5, paddingBottom: 16 },
+  counter: { color: 'rgba(255,255,255,0.38)', fontSize: 13 },
+  privacy: { color: 'rgba(255,255,255,0.18)', fontSize: 12 },
 });

@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { convertToMarkdown } from '@/converters';
 import { useDailyLimit } from '@/hooks/useDailyLimit';
 
+// Used only for the share-sheet entry point (file opened via iOS "Open with").
 export default function ConvertingScreen() {
   const { uri, fileName, mimeType } = useLocalSearchParams<{
     uri: string; fileName: string; mimeType: string;
@@ -14,12 +15,10 @@ export default function ConvertingScreen() {
   useEffect(() => {
     if (!uri || !mimeType) { router.replace('/'); return; }
     if (!loaded) return;
-
     if (!canConvert) {
-      router.replace({ pathname: '/', params: { errorMsg: encodeURIComponent('Daily limit reached. Come back tomorrow!') } });
+      router.replace({ pathname: '/', params: { errorMsg: encodeURIComponent('Daily limit reached. Try again tomorrow.') } });
       return;
     }
-
     (async () => {
       try {
         const markdown = await convertToMarkdown(uri, mimeType);
@@ -34,15 +33,22 @@ export default function ConvertingScreen() {
 
   return (
     <View style={s.container}>
-      <ActivityIndicator size="large" color="#7c3aed" />
-      <Text style={s.name} numberOfLines={2}>{fileName}</Text>
+      <ActivityIndicator size="large" color="#5E5CE6" />
+      <Text style={s.name} numberOfLines={2}>{fileName ?? 'file'}</Text>
       <Text style={s.sub}>Converting…</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 },
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    paddingHorizontal: 32,
+  },
   name: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  sub: { color: '#666', fontSize: 14 },
+  sub: { color: 'rgba(255,255,255,0.35)', fontSize: 14 },
 });
