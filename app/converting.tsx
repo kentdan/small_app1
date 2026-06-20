@@ -6,8 +6,9 @@ import { useHistory } from '@/hooks/useHistory';
 import { useDailyLimit } from '@/hooks/useDailyLimit';
 import { countTokens } from '@/components/TokenCounter';
 
-// This screen is shown when a file is opened via "Open with" / share sheet.
-// It auto-starts conversion and navigates to preview on success.
+// Shown when a file is opened via "Open with" / share sheet.
+// Waits for AsyncStorage to load before checking the daily limit,
+// then auto-converts and navigates to /preview on success.
 export default function ConvertingScreen() {
   const { uri, fileName, mimeType } = useLocalSearchParams<{
     uri: string;
@@ -16,13 +17,16 @@ export default function ConvertingScreen() {
   }>();
   const router = useRouter();
   const { save: saveHistory } = useHistory();
-  const { canConvert, recordConversion } = useDailyLimit();
+  const { loaded, canConvert, recordConversion } = useDailyLimit();
 
   useEffect(() => {
     if (!uri || !mimeType) { router.replace('/'); return; }
 
+    // Wait for AsyncStorage to finish loading before acting on canConvert —
+    // without this guard the limit check fires before the stored count is known.
+    if (!loaded) return;
+
     if (!canConvert) {
-      // Route back home so the paywall can fire from there
       router.replace({ pathname: '/', params: { showPaywall: '1' } });
       return;
     }
@@ -44,10 +48,13 @@ export default function ConvertingScreen() {
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Conversion failed';
-        router.replace({ pathname: '/', params: { errorMsg: msg } });
+        router.replace({
+          pathname: '/',
+          params: { errorMsg: encodeURIComponent(msg) },
+        });
       }
     })();
-  }, []);
+  }, [loaded]); // re-run once loaded flips to true
 
   return (
     <View style={styles.container}>
@@ -67,14 +74,6 @@ const styles = StyleSheet.create({
     gap: 16,
     padding: 32,
   },
-  name: {
-    color: '#f7fafc',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  sub: {
-    color: '#718096',
-    fontSize: 14,
-  },
+  name: { color: '#f7fafc', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  sub: { color: '#718096', fontSize: 14 },
 });
