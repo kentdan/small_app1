@@ -2,32 +2,21 @@ import React, { useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { convertToMarkdown } from '@/converters';
-import { useHistory } from '@/hooks/useHistory';
 import { useDailyLimit } from '@/hooks/useDailyLimit';
-import { countTokens } from '@/components/TokenCounter';
 
-// Shown when a file is opened via "Open with" / share sheet.
-// Waits for AsyncStorage to load before checking the daily limit,
-// then auto-converts and navigates to /preview on success.
 export default function ConvertingScreen() {
   const { uri, fileName, mimeType } = useLocalSearchParams<{
-    uri: string;
-    fileName: string;
-    mimeType: string;
+    uri: string; fileName: string; mimeType: string;
   }>();
   const router = useRouter();
-  const { save: saveHistory } = useHistory();
   const { loaded, canConvert, recordConversion } = useDailyLimit();
 
   useEffect(() => {
     if (!uri || !mimeType) { router.replace('/'); return; }
-
-    // Wait for AsyncStorage to finish loading before acting on canConvert —
-    // without this guard the limit check fires before the stored count is known.
     if (!loaded) return;
 
     if (!canConvert) {
-      router.replace({ pathname: '/', params: { showPaywall: '1' } });
+      router.replace({ pathname: '/', params: { errorMsg: encodeURIComponent('Daily limit reached. Come back tomorrow!') } });
       return;
     }
 
@@ -35,45 +24,25 @@ export default function ConvertingScreen() {
       try {
         const markdown = await convertToMarkdown(uri, mimeType);
         await recordConversion();
-        await saveHistory({
-          fileName: fileName ?? 'file',
-          fileType: mimeType,
-          markdown,
-          tokenCount: countTokens(markdown),
-          convertedAt: Date.now(),
-        });
-        router.replace({
-          pathname: '/preview',
-          params: { fileName: fileName ?? 'file', markdown },
-        });
+        router.replace({ pathname: '/preview', params: { fileName: fileName ?? 'file', markdown } });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Conversion failed';
-        router.replace({
-          pathname: '/',
-          params: { errorMsg: encodeURIComponent(msg) },
-        });
+        router.replace({ pathname: '/', params: { errorMsg: encodeURIComponent(msg) } });
       }
     })();
-  }, [loaded]); // re-run once loaded flips to true
+  }, [loaded]);
 
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
       <ActivityIndicator size="large" color="#7c3aed" />
-      <Text style={styles.name} numberOfLines={2}>{fileName}</Text>
-      <Text style={styles.sub}>Converting to Markdown…</Text>
+      <Text style={s.name} numberOfLines={2}>{fileName}</Text>
+      <Text style={s.sub}>Converting…</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    padding: 32,
-  },
-  name: { color: '#f7fafc', fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  sub: { color: '#718096', fontSize: 14 },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32 },
+  name: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  sub: { color: '#666', fontSize: 14 },
 });

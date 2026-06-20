@@ -1,180 +1,102 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Share,
-  Alert,
-  ScrollView,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Share, Alert,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { MarkdownViewer } from '@/components/MarkdownViewer';
-import { TokenCounter, countTokens } from '@/components/TokenCounter';
-
-// Trim: collapse 3+ blank lines → 1, remove long dividers
-function trimForAI(md: string): string {
-  return md
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/^[-=]{4,}$/gm, '')
-    .replace(/[ \t]+$/gm, '')
-    .trim();
-}
 
 export default function PreviewScreen() {
-  const { fileName, markdown: rawMarkdown } = useLocalSearchParams<{ fileName: string; markdown: string }>();
+  const { fileName, markdown } = useLocalSearchParams<{ fileName: string; markdown: string }>();
   const navigation = useNavigation();
-  const [markdown, setMarkdown] = useState(rawMarkdown ?? '');
-  const [trimmed, setTrimmed] = useState(false);
+  const [raw, setRaw] = useState(false);
 
   React.useLayoutEffect(() => {
-    navigation.setOptions({ title: fileName ?? 'Converted' });
+    navigation.setOptions({ title: fileName ?? 'Result' });
   }, [fileName]);
 
-  const tokenCount = useMemo(() => countTokens(markdown), [markdown]);
-
   const handleCopy = async () => {
-    await Clipboard.setStringAsync(markdown);
-    Alert.alert('Copied', 'Markdown copied — paste into Claude, ChatGPT, or any AI tool.');
-  };
-
-  // Copy just enough to fit GPT-4o (128k tokens ≈ 512k chars)
-  const handleCopyFirst = async (maxTokens: number) => {
-    const maxChars = maxTokens * 4;
-    const chunk = markdown.slice(0, maxChars);
-    await Clipboard.setStringAsync(chunk);
-    const pct = Math.round((chunk.length / markdown.length) * 100);
-    Alert.alert('Copied', `Copied first ~${(maxTokens / 1000).toFixed(0)}k tokens (${pct}% of document).`);
+    await Clipboard.setStringAsync(markdown ?? '');
+    Alert.alert('Copied!', 'Paste into Claude, ChatGPT, or any AI tool.');
   };
 
   const handleShare = async () => {
     if (!markdown) return;
-    const baseName = (fileName ?? 'converted').replace(/\.[^.]+$/, '');
-    const path = FileSystem.cacheDirectory + baseName + '.md';
-    await FileSystem.writeAsStringAsync(path, markdown, { encoding: FileSystem.EncodingType.UTF8 });
+    const base = (fileName ?? 'converted').replace(/\.[^.]+$/, '');
+    const path = FileSystem.cacheDirectory + base + '.md';
+    await FileSystem.writeAsStringAsync(path, markdown, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(path, { mimeType: 'text/markdown', dialogTitle: 'Share Markdown' });
+      await Sharing.shareAsync(path, { mimeType: 'text/markdown' });
     } else {
-      await Share.share({ message: markdown, title: baseName + '.md' });
+      await Share.share({ message: markdown });
     }
   };
 
-  const handleTrim = () => {
-    const result = trimForAI(markdown);
-    const saved = markdown.length - result.length;
-    const savedTokens = Math.ceil(saved / 4);
-    setMarkdown(result);
-    setTrimmed(true);
-    Alert.alert('Trimmed', `Removed ~${savedTokens} tokens of extra whitespace.`);
-  };
-
-  const showChunkOptions = tokenCount > 128_000;
-
   return (
-    <View style={styles.container}>
-      <TokenCounter
-        tokens={tokenCount}
-        onTrim={!trimmed && tokenCount > 8_000 ? handleTrim : undefined}
-      />
-
-      <MarkdownViewer markdown={markdown} />
-
-      {/* Primary: Copy for AI */}
-      <View style={styles.actions}>
-        <TouchableOpacity style={[styles.actionBtn, styles.actionBtnPrimary]} onPress={handleCopy} activeOpacity={0.8}>
-          <Text style={styles.actionIcon}>📋</Text>
-          <Text style={[styles.actionText, styles.actionTextPrimary]}>Copy for AI</Text>
+    <View style={s.container}>
+      {/* Toggle */}
+      <View style={s.toggle}>
+        <TouchableOpacity style={[s.tab, !raw && s.tabActive]} onPress={() => setRaw(false)}>
+          <Text style={[s.tabText, !raw && s.tabTextActive]}>Preview</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={handleShare} activeOpacity={0.8}>
-          <Text style={styles.actionIcon}>↗</Text>
-          <Text style={styles.actionText}>Share .md</Text>
+        <TouchableOpacity style={[s.tab, raw && s.tabActive]} onPress={() => setRaw(true)}>
+          <Text style={[s.tabText, raw && s.tabTextActive]}>Raw</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Chunk options for very large documents */}
-      {showChunkOptions && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chunkRow} contentContainerStyle={styles.chunkContent}>
-          <Text style={styles.chunkLabel}>Too large? Copy first:</Text>
-          {[16, 32, 128].map(k => (
-            <TouchableOpacity key={k} style={styles.chunkBtn} onPress={() => handleCopyFirst(k * 1000)}>
-              <Text style={styles.chunkBtnText}>{k}k tokens</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+      {/* Content */}
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
+        <Text style={raw ? s.rawText : s.mdText} selectable>{markdown ?? ''}</Text>
+      </ScrollView>
+
+      {/* Actions */}
+      <View style={s.actions}>
+        <TouchableOpacity style={[s.actionBtn, s.actionPrimary]} onPress={handleCopy} activeOpacity={0.8}>
+          <Text style={s.actionPrimaryText}>📋  Copy for AI</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.actionBtn} onPress={handleShare} activeOpacity={0.8}>
+          <Text style={s.actionText}>Share .md</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111' },
+  toggle: {
+    flexDirection: 'row',
+    margin: 12,
+    backgroundColor: '#1e1e1e',
+    borderRadius: 10,
+    padding: 3,
   },
+  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  tabActive: { backgroundColor: '#7c3aed' },
+  tabText: { color: '#555', fontSize: 14, fontWeight: '600' },
+  tabTextActive: { color: '#fff' },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 32 },
+  mdText: { color: '#e2e8f0', fontSize: 15, lineHeight: 26 },
+  rawText: { color: '#a0aec0', fontSize: 13, lineHeight: 20, fontFamily: 'monospace' },
   actions: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    padding: 16,
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: '#16213e',
+    borderTopColor: '#1e1e1e',
   },
   actionBtn: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#16213e',
-    gap: 8,
-  },
-  actionBtnPrimary: {
-    backgroundColor: '#7c3aed',
-    flex: 1.5,
-  },
-  actionIcon: {
-    fontSize: 18,
-  },
-  actionText: {
-    color: '#a0aec0',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  actionTextPrimary: {
-    color: '#fff',
-  },
-  chunkRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#16213e',
-    maxHeight: 52,
-  },
-  chunkContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
+    backgroundColor: '#1e1e1e',
     alignItems: 'center',
-    flexDirection: 'row',
   },
-  chunkLabel: {
-    color: '#4a5568',
-    fontSize: 13,
-    marginRight: 4,
-  },
-  chunkBtn: {
-    backgroundColor: '#16213e',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#2d3748',
-  },
-  chunkBtnText: {
-    color: '#a0aec0',
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  actionPrimary: { backgroundColor: '#7c3aed', flex: 1.4 },
+  actionText: { color: '#888', fontSize: 15, fontWeight: '600' },
+  actionPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

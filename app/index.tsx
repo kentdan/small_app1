@@ -1,229 +1,135 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet,
+  SafeAreaView, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
+import { convertToMarkdown, SUPPORTED_MIME_TYPES } from '@/converters';
 import { useDailyLimit } from '@/hooks/useDailyLimit';
-import { useConverter } from '@/hooks/useConverter';
-import { usePurchase } from '@/hooks/usePurchase';
-import { useHistory } from '@/hooks/useHistory';
-import { countTokens } from '@/components/TokenCounter';
-import { DailyLimitBar } from '@/components/DailyLimitBar';
-import { PaywallModal } from '@/components/PaywallModal';
 
-// Same set on iOS and Android — all pure JS, no native module needed.
-const SUPPORTED_FORMATS = ['PDF', 'DOCX', 'PPTX', 'XLSX', 'HTML', 'CSV', 'JSON', 'XML', 'TXT', 'EPUB'];
+const FORMATS = ['PDF', 'DOCX', 'PPTX', 'XLSX', 'HTML', 'CSV', 'JSON', 'XML', 'TXT', 'EPUB'];
 
 export default function HomeScreen() {
   const router = useRouter();
-
-  // Params sent back by converting.tsx when a share-sheet file hits the limit or errors
-  const { showPaywall, errorMsg } = useLocalSearchParams<{
-    showPaywall?: string;
-    errorMsg?: string;
-  }>();
-
+  const { errorMsg } = useLocalSearchParams<{ errorMsg?: string }>();
   const limit = useDailyLimit();
-  const { state, pickAndConvert, reset } = useConverter();
-  const { save: saveHistory } = useHistory();
-  const [paywallVisible, setPaywallVisible] = useState(false);
-  const [externalError, setExternalError] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
+  const [fileName, setFileName] = useState('');
 
-  const { status: purchaseStatus, purchase, restore, localizedPrice, error: purchaseError } = usePurchase(
-    async () => {
-      await limit.unlockPremium();
-      setPaywallVisible(false);
-    }
-  );
-
-  // Handle params from converting.tsx (share-sheet entry point)
   useEffect(() => {
-    if (showPaywall === '1') {
-      setPaywallVisible(true);
-    }
-    if (errorMsg) {
-      setExternalError(decodeURIComponent(errorMsg));
-    }
-  }, [showPaywall, errorMsg]);
+    if (errorMsg) Alert.alert('Conversion error', decodeURIComponent(errorMsg));
+  }, [errorMsg]);
 
-  const handlePick = () => {
-    setExternalError(null);
-    pickAndConvert(
-      () => setPaywallVisible(true),
-      limit.recordConversion,
-      limit.canConvert,
-    );
+  const handlePick = async () => {
+    if (!limit.loaded) return;
+    if (!limit.canConvert) {
+      Alert.alert(
+        'Daily limit reached',
+        `You've used all ${limit.dailyLimit} free conversions today. Come back tomorrow!`,
+      );
+      return;
+    }
+
+    const result = await DocumentPicker.getDocumentAsync({
+      type: SUPPORTED_MIME_TYPES,
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    setFileName(asset.name);
+    setConverting(true);
+
+    try {
+      const markdown = await convertToMarkdown(asset.uri, asset.mimeType ?? '');
+      await limit.recordConversion();
+      router.push({ pathname: '/preview', params: { fileName: asset.name, markdown } });
+    } catch (e: unknown) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Conversion failed');
+    } finally {
+      setConverting(false);
+      setFileName('');
+    }
   };
 
-  useEffect(() => {
-    if (state.status === 'done') {
-      const { fileName, fileType, markdown } = state.result;
-      saveHistory({
-        fileName,
-        fileType,
-        markdown,
-        tokenCount: countTokens(markdown),
-        convertedAt: Date.now(),
-      });
-      router.push({ pathname: '/preview', params: { fileName, markdown } });
-      reset();
-    }
-  }, [state.status]);
-
-  const isConverting = state.status === 'converting' || state.status === 'picking';
-  const errorText = state.status === 'error' ? state.message : externalError;
-
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+    <SafeAreaView style={s.safe}>
+      <View style={s.container}>
 
-        {limit.loaded && (
-          <DailyLimitBar
-            used={limit.usedToday}
-            limit={limit.dailyLimit}
-            isPremium={limit.isPremium}
-            onUpgrade={() => setPaywallVisible(true)}
-          />
+        {/* Limit counter */}
+        {limit.loaded && !limit.isPremium && (
+          <Text style={s.counter}>
+            {limit.usedToday}/{limit.dailyLimit} free conversions today
+          </Text>
         )}
 
-        <View style={styles.hero}>
-          <TouchableOpacity
-            style={[styles.convertButton, isConverting && styles.convertButtonDisabled]}
-            onPress={handlePick}
-            disabled={isConverting}
-            activeOpacity={0.8}
-          >
-            {isConverting ? (
+        {/* Main button */}
+        <View style={s.hero}>
+          <TouchableOpacity style={s.btn} onPress={handlePick} disabled={converting} activeOpacity={0.8}>
+            {converting ? (
               <>
-                <ActivityIndicator color="#fff" size="large" style={styles.spinner} />
-                <Text style={styles.convertButtonText}>
-                  {state.status === 'picking' ? 'Picking file…' : 'Converting…'}
-                </Text>
-                {state.status === 'converting' && (
-                  <Text style={styles.convertButtonFileName} numberOfLines={1}>
-                    {state.fileName}
-                  </Text>
-                )}
+                <ActivityIndicator color="#fff" size="large" />
+                <Text style={s.btnLabel} numberOfLines={1}>{fileName || 'Converting…'}</Text>
               </>
             ) : (
               <>
-                <Text style={styles.convertIcon}>📄  →  #️⃣</Text>
-                <Text style={styles.convertButtonText}>Convert to Markdown</Text>
-                <Text style={styles.convertButtonSub}>Tap to pick any file</Text>
+                <Text style={s.btnIcon}>📄 → #️⃣</Text>
+                <Text style={s.btnLabel}>Convert to Markdown</Text>
+                <Text style={s.btnSub}>PDF · DOCX · XLSX · and more</Text>
               </>
             )}
           </TouchableOpacity>
+        </View>
 
-          {errorText && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{errorText}</Text>
-              <TouchableOpacity onPress={() => { reset(); setExternalError(null); }}>
-                <Text style={styles.retryText}>Dismiss</Text>
-              </TouchableOpacity>
+        {/* Supported formats */}
+        <View style={s.formats}>
+          {FORMATS.map(f => (
+            <View key={f} style={s.badge}>
+              <Text style={s.badgeText}>{f}</Text>
             </View>
-          )}
+          ))}
         </View>
 
-        <View style={styles.formatsSection}>
-          <Text style={styles.formatsTitle}>Supported formats</Text>
-          <View style={styles.formatsBadges}>
-            {SUPPORTED_FORMATS.map(fmt => (
-              <View key={fmt} style={styles.badge}>
-                <Text style={styles.badgeText}>{fmt}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.privacyBadge}>
-          <Text style={styles.privacyIcon}>🔒</Text>
-          <Text style={styles.privacyText}>
-            All processing happens on your device — no uploads, no internet needed.
-            {'\n'}Perfect for sensitive documents.
-          </Text>
-        </View>
+        {/* Privacy note */}
+        <Text style={s.privacy}>🔒 Converted on-device · no uploads · no internet</Text>
 
       </View>
-
-      <PaywallModal
-        visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
-        onPurchase={purchase}
-        onRestore={restore}
-        purchaseStatus={purchaseStatus}
-        localizedPrice={localizedPrice}
-        error={purchaseError}
-      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f0f1a' },
-  container: { flex: 1, paddingTop: 12 },
-  hero: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-  convertButton: {
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#111' },
+  container: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
+  counter: { textAlign: 'center', color: '#666', fontSize: 13, marginBottom: 8 },
+  hero: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  btn: {
     width: '100%',
     backgroundColor: '#7c3aed',
-    borderRadius: 24,
-    paddingVertical: 36,
+    borderRadius: 20,
+    paddingVertical: 40,
     alignItems: 'center',
+    gap: 10,
     shadowColor: '#7c3aed',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.45,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
     shadowRadius: 20,
-    elevation: 12,
+    elevation: 10,
   },
-  convertButtonDisabled: { opacity: 0.7 },
-  convertIcon: { fontSize: 32, marginBottom: 14 },
-  spinner: { marginBottom: 12 },
-  convertButtonText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  convertButtonSub: { color: 'rgba(255,255,255,0.55)', fontSize: 14, marginTop: 6 },
-  convertButtonFileName: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 6, maxWidth: 260 },
-  errorBox: {
-    marginTop: 16,
-    backgroundColor: '#2d1515',
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    alignItems: 'center',
-  },
-  errorText: { color: '#fc8181', fontSize: 14, marginBottom: 8, textAlign: 'center' },
-  retryText: { color: '#7c3aed', fontSize: 14, fontWeight: '600' },
-  formatsSection: { paddingHorizontal: 20, paddingBottom: 14 },
-  formatsTitle: {
-    color: '#4a5568',
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  formatsBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  btnIcon: { fontSize: 36 },
+  btnLabel: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  btnSub: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
+  formats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   badge: {
-    backgroundColor: '#16213e',
+    backgroundColor: '#1e1e1e',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: '#2d3748',
+    borderColor: '#333',
   },
-  badgeText: { color: '#718096', fontSize: 13, fontWeight: '500' },
-  privacyBadge: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginHorizontal: 20,
-    marginBottom: 24,
-    backgroundColor: '#16213e',
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-  },
-  privacyIcon: { fontSize: 18, marginTop: 1 },
-  privacyText: { flex: 1, color: '#4a5568', fontSize: 12, lineHeight: 19 },
+  badgeText: { color: '#666', fontSize: 12 },
+  privacy: { textAlign: 'center', color: '#444', fontSize: 12, marginBottom: 24 },
 });
