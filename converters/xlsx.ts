@@ -1,10 +1,8 @@
-import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
+import { readAsBase64 } from './reader';
 
 export async function xlsxToMarkdown(filePath: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(filePath, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const base64 = await readAsBase64(filePath);
 
   const workbook = XLSX.read(base64, { type: 'base64' });
   const sections: string[] = [];

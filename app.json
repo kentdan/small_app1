@@ -99,6 +99,11 @@
         ]
       }
     },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/icon.png"
+    },
     "plugins": [
       "expo-router",
       [

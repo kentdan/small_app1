@@ -4,7 +4,7 @@ import { pptxToMarkdown } from './pptx';
 import { xlsxToMarkdown } from './xlsx';
 import { htmlToMarkdown } from './html';
 import { csvToMarkdown, jsonToMarkdown, xmlToMarkdown, plainToMarkdown } from './text';
-import * as FileSystem from 'expo-file-system';
+import { readAsText, readAsBase64 } from './reader';
 import JSZip from 'jszip';
 
 export const SUPPORTED_MIME_TYPES = [
@@ -53,27 +53,27 @@ export async function convertToMarkdown(filePath: string, mimeType: string): Pro
   }
 
   if (type === 'text/html') {
-    const content = await FileSystem.readAsStringAsync(filePath);
+    const content = await readAsText(filePath);
     return htmlToMarkdown(content);
   }
 
   if (type === 'text/csv') {
-    const content = await FileSystem.readAsStringAsync(filePath);
+    const content = await readAsText(filePath);
     return csvToMarkdown(content);
   }
 
   if (type === 'application/json') {
-    const content = await FileSystem.readAsStringAsync(filePath);
+    const content = await readAsText(filePath);
     return jsonToMarkdown(content);
   }
 
   if (type === 'text/xml' || type === 'application/xml') {
-    const content = await FileSystem.readAsStringAsync(filePath);
+    const content = await readAsText(filePath);
     return xmlToMarkdown(content);
   }
 
   if (type === 'text/plain') {
-    const content = await FileSystem.readAsStringAsync(filePath);
+    const content = await readAsText(filePath);
     return plainToMarkdown(content);
   }
 
@@ -86,9 +86,7 @@ export async function convertToMarkdown(filePath: string, mimeType: string): Pro
 }
 
 async function epubToMarkdown(filePath: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(filePath, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const base64 = await readAsBase64(filePath);
   const zip = await JSZip.loadAsync(base64, { base64: true });
 
   const htmlFiles = Object.keys(zip.files).filter(

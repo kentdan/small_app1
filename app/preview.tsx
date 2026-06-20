@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Share, Alert,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Share, Alert, Platform,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
@@ -24,6 +24,18 @@ export default function PreviewScreen() {
   const handleShare = async () => {
     if (!markdown) return;
     const base = (fileName ?? 'converted').replace(/\.[^.]+$/, '');
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = base + '.md';
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     const path = FileSystem.cacheDirectory + base + '.md';
     await FileSystem.writeAsStringAsync(path, markdown, {
       encoding: FileSystem.EncodingType.UTF8,

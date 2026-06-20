@@ -1,11 +1,9 @@
-import * as FileSystem from 'expo-file-system';
 import JSZip from 'jszip';
+import { readAsBase64 } from './reader';
 
 // PPTX is a ZIP. Each slide is ppt/slides/slide{N}.xml.
 export async function pptxToMarkdown(filePath: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(filePath, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const base64 = await readAsBase64(filePath);
 
   const zip = await JSZip.loadAsync(base64, { base64: true });
 

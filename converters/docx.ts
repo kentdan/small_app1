@@ -1,11 +1,9 @@
-import * as FileSystem from 'expo-file-system';
 import JSZip from 'jszip';
+import { readAsBase64 } from './reader';
 
 // DOCX is a ZIP of XML files. Parse word/document.xml for text + basic styles.
 export async function docxToMarkdown(filePath: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(filePath, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const base64 = await readAsBase64(filePath);
 
   const zip = await JSZip.loadAsync(base64, { base64: true });
 

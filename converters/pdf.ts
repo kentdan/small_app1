@@ -1,5 +1,5 @@
 import './polyfills'; // must run before pdfjs is required
-import * as FileSystem from 'expo-file-system';
+import { readAsBase64 } from './reader';
 
 // pdfjs-dist legacy build — no web worker, text extraction only (no canvas).
 // Lazily required so the polyfills above are installed first.
@@ -15,9 +15,7 @@ function getPdfjs() {
 }
 
 export async function pdfToMarkdown(filePath: string): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(filePath, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const base64 = await readAsBase64(filePath);
 
   // base64 → Uint8Array (atob is available on RN 0.74+)
   const binary = atob(base64);
