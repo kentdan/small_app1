@@ -18,6 +18,25 @@ server, on both iOS and Android.
 - **THEN** no Chaquopy/MarkItDown native module or Python source is required
   for conversion
 
+### Requirement: Converters run on web (react-native-web / Metro)
+The app SHALL bundle and run in a web browser via `react-native-web` without
+importing `expo-file-system` directly in any converter module.
+
+#### Scenario: Web bundle compiles without native file-system calls
+- **WHEN** the project is exported with `expo export --platform web`
+- **THEN** Metro produces a complete static bundle (all 5 routes) with no
+  unresolved native modules
+
+#### Scenario: Web file reading uses fetch on blob URIs
+- **WHEN** a file is picked on web (blob:// URI from document picker)
+- **THEN** `converters/reader.ts` reads it via `fetch()` and returns base64
+  or text without calling any expo-file-system API
+
+#### Scenario: pdfjs canvas stub on web
+- **WHEN** pdfjs-dist legacy build is included in the web bundle
+- **THEN** Metro resolves `require('canvas')` to an empty module (native
+  `DOMMatrix` is available in the browser) and the bundle compiles without error
+
 ### Requirement: Converters degrade gracefully under Hermes
 Converters that depend on browser/DOM globals SHALL provide polyfills or
 fallbacks so that a missing global produces a clear result rather than an

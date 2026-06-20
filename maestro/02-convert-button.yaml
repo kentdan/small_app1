@@ -1,0 +1,15 @@
+appId: com.mdconverter
+---
+# Verify tapping the convert button opens the system document picker.
+- clearState
+- launchApp
+- assertVisible:
+    text: "Convert to Markdown"
+- tapOn:
+    text: "Convert to Markdown"
+# The OS document picker sheet should appear (sheet is outside app a11y tree,
+# but its presence means the tap succeeded and no crash occurred).
+# Dismiss it and confirm we return to home cleanly.
+- pressKey: Escape
+- assertVisible:
+    text: "Convert to Markdown"

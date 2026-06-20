@@ -1,0 +1,11 @@
+appId: com.mdconverter
+---
+# Verify cold launch renders the home screen correctly.
+- clearState
+- launchApp
+- assertVisible:
+    text: "Convert to Markdown"
+- assertVisible:
+    text: "free conversions today"
+- assertNotVisible:
+    text: "Error"
