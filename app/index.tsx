@@ -125,6 +125,7 @@ const s = StyleSheet.create({
     backgroundColor: PURPLE,
     alignItems: 'center',
     justifyContent: 'center',
+    // iOS/Android shadow
     shadowColor: PURPLE,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.55,
@@ -146,6 +147,7 @@ const s = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 6,
+    // web equivalent via inline style (shadow* deprecated on web)
   },
   btnDim: { backgroundColor: '#2D2B6B', shadowOpacity: 0 },
   btnLabel: { color: '#fff', fontSize: 18, fontWeight: '600', letterSpacing: -0.2 },
