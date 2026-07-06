@@ -9,7 +9,7 @@ appId: com.mdconverter
       text: "Convert to Markdown"
     timeout: 5000
 - assertVisible:
-    text: "5 / 5"
+    text: "5 of 5 free today"
 - tapOn:
     text: "Convert to Markdown"
 - assertVisible:

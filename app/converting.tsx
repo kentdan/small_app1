@@ -3,6 +3,7 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { convertToMarkdown } from '@/converters';
 import { useDailyLimit } from '@/hooks/useDailyLimit';
+import { saveConversion } from '@/lib/library';
 
 // Used only for the share-sheet entry point (file opened via iOS "Open with").
 export default function ConvertingScreen() {
@@ -23,7 +24,8 @@ export default function ConvertingScreen() {
       try {
         const markdown = await convertToMarkdown(uri, mimeType);
         await recordConversion();
-        router.replace({ pathname: '/preview', params: { fileName: fileName ?? 'file', markdown } });
+        const id = await saveConversion(fileName ?? 'file', markdown);
+        router.replace({ pathname: '/preview', params: { id, fileName: fileName ?? 'file' } });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Conversion failed';
         router.replace({ pathname: '/', params: { errorMsg: encodeURIComponent(msg) } });

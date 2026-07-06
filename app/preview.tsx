@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  SafeAreaView, Share, Alert, Platform,
+  SafeAreaView, Share, Platform, ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { getContent } from '@/lib/library';
+import { notify } from '@/lib/notify';
 
 // Inline span parser: **bold**, *italic*, _italic_, `code`
 function renderInline(text: string, baseKey: string): React.ReactNode[] {
@@ -62,13 +64,24 @@ function MarkdownView({ text }: { text: string }) {
 }
 
 export default function PreviewScreen() {
-  const { fileName, markdown } = useLocalSearchParams<{ fileName: string; markdown: string }>();
+  // Main flow passes id (content loaded from local library).
+  // markdown param is a fallback for deep links / Maestro flows.
+  const { id, fileName, markdown } = useLocalSearchParams<{
+    id?: string; fileName?: string; markdown?: string;
+  }>();
   const navigation = useNavigation();
   const [raw, setRaw] = useState(false);
+  const [content, setContent] = useState<string | null>(markdown ?? null);
+
+  useEffect(() => {
+    if (markdown != null) { setContent(markdown); return; }
+    if (id) getContent(id).then(setContent);
+  }, [id, markdown]);
 
   React.useLayoutEffect(() => {
+    const base = (fileName ?? 'Result').replace(/\.[^.]+$/, '');
     navigation.setOptions({
-      title: fileName ?? 'Result',
+      title: base + '.md',
       headerRight: () => (
         <TouchableOpacity onPress={() => setRaw(r => !r)} style={{ paddingRight: 4 }}>
           <Text style={{ color: raw ? '#5E5CE6' : 'rgba(255,255,255,0.35)', fontSize: 14, fontWeight: '500' }}>
@@ -80,15 +93,15 @@ export default function PreviewScreen() {
   }, [fileName, raw]);
 
   const handleCopy = async () => {
-    await Clipboard.setStringAsync(markdown ?? '');
-    Alert.alert('Copied', 'Paste into Claude, ChatGPT, or any AI tool.');
+    await Clipboard.setStringAsync(content ?? '');
+    notify('Copied', 'Paste into Claude, ChatGPT, or any AI tool.');
   };
 
   const handleShare = async () => {
-    if (!markdown) return;
+    if (!content) return;
     const base = (fileName ?? 'converted').replace(/\.[^.]+$/, '');
     if (Platform.OS === 'web') {
-      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const blob = new Blob([content], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = base + '.md'; a.click();
@@ -96,21 +109,29 @@ export default function PreviewScreen() {
       return;
     }
     const path = FileSystem.cacheDirectory + base + '.md';
-    await FileSystem.writeAsStringAsync(path, markdown, { encoding: FileSystem.EncodingType.UTF8 });
+    await FileSystem.writeAsStringAsync(path, content, { encoding: FileSystem.EncodingType.UTF8 });
     if (await Sharing.isAvailableAsync()) {
       await Sharing.shareAsync(path, { mimeType: 'text/markdown' });
     } else {
-      await Share.share({ message: markdown });
+      await Share.share({ message: content });
     }
   };
+
+  if (content === null) {
+    return (
+      <SafeAreaView style={[s.safe, s.loading]}>
+        <ActivityIndicator color="#5E5CE6" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe}>
       <ScrollView style={s.scroll} contentContainerStyle={s.content}>
         {raw ? (
-          <Text style={s.rawText} selectable>{markdown ?? ''}</Text>
+          <Text style={s.rawText} selectable>{content}</Text>
         ) : (
-          <MarkdownView text={markdown ?? ''} />
+          <MarkdownView text={content} />
         )}
       </ScrollView>
 
@@ -128,6 +149,7 @@ export default function PreviewScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#000' },
+  loading: { alignItems: 'center', justifyContent: 'center' },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
   rawText: {
@@ -153,7 +175,6 @@ const s = StyleSheet.create({
   secondaryText: { color: 'rgba(255,255,255,0.6)', fontSize: 16, fontWeight: '500' },
 });
 
-// Inline span styles
 const il = StyleSheet.create({
   bold: { fontWeight: '700', color: '#fff' },
   italic: { fontStyle: 'italic' },
@@ -165,7 +186,6 @@ const il = StyleSheet.create({
   },
 });
 
-// Block-level markdown styles
 const md = StyleSheet.create({
   h1: { color: '#fff', fontSize: 26, fontWeight: '700', letterSpacing: -0.5, marginBottom: 6, marginTop: 12 },
   h2: { color: '#fff', fontSize: 21, fontWeight: '700', letterSpacing: -0.3, marginBottom: 4, marginTop: 10 },

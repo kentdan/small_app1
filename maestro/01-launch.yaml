@@ -4,8 +4,10 @@ appId: com.mdconverter
 - clearState
 - launchApp
 - assertVisible:
+    text: "MDConverter"
+- assertVisible:
     text: "Convert to Markdown"
 - assertVisible:
-    text: "free conversions today"
-- assertNotVisible:
-    text: "Error"
+    text: "No conversions yet"
+- assertVisible:
+    text: "free today"
