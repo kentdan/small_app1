@@ -1,0 +1,32 @@
+appId: com.mdconverter
+---
+# Navigate directly to the preview screen via deep link and verify action
+# buttons are present and tappable.
+- clearState
+- launchApp
+- openLink: "mdconverter:///preview?fileName=test.pdf&markdown=Hello%20**World**"
+- extendedWaitUntil:
+    visible:
+      text: "Copy for AI"
+    timeout: 5000
+- assertVisible:
+    text: "Copy for AI"
+- assertVisible:
+    text: "Share .md"
+- assertVisible:
+    text: "Preview"
+- assertVisible:
+    text: "Raw"
+# Toggle to Raw view
+- tapOn:
+    text: "Raw"
+- assertVisible:
+    text: "Hello **World**"
+# Toggle back to Preview
+- tapOn:
+    text: "Preview"
+# Copy button should produce "Copied!" alert
+- tapOn:
+    text: "Copy for AI"
+- assertVisible:
+    text: "Copied!"

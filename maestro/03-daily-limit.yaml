@@ -1,0 +1,16 @@
+appId: com.mdconverter
+---
+# Seed AsyncStorage with count=5 (at limit) then verify the limit alert fires
+# when the user tries to convert.
+- clearState
+- openLink: "mdconverter:///seed?count=5&isPremium=false"
+- extendedWaitUntil:
+    visible:
+      text: "Convert to Markdown"
+    timeout: 5000
+- assertVisible:
+    text: "5 of 5 free today"
+- tapOn:
+    text: "Convert to Markdown"
+- assertVisible:
+    text: "Daily limit reached"
